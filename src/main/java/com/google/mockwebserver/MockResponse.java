@@ -17,108 +17,38 @@
 package com.google.mockwebserver;
 
 import static com.google.mockwebserver.MockWebServer.ASCII;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 
 /**
- * A scripted response to be replayed by the mock web server.
+ * A scripted response to be replayed by {@link MockWebServer}.
  */
-public final class MockResponse implements Cloneable {
-    private static final String EMPTY_BODY_HEADER = "Content-Length: 0";
+public class MockResponse extends BaseMockResponse<MockResponse> implements Cloneable {
     private static final String CHUNKED_BODY_HEADER = "Transfer-encoding: chunked";
-    private static final byte[] EMPTY_BODY = new byte[0];
 
-    private String status = "HTTP/1.1 200 OK";
-    private List<String> headers = new ArrayList<String>();
-    private byte[] body = EMPTY_BODY;
-    private int bytesPerSecond = Integer.MAX_VALUE;
-    private SocketPolicy socketPolicy = SocketPolicy.KEEP_OPEN;
+    private byte[] body;
 
     public MockResponse() {
-        headers.add(EMPTY_BODY_HEADER);
+        this.body = new byte[0];
+        addHeader(CONTENT_LENGTH, 0);
     }
 
-    @Override public MockResponse clone() {
+    @Override
+    public MockResponse clone() {
         try {
-            MockResponse result = (MockResponse) super.clone();
-            result.headers = new ArrayList<String>(result.headers);
-            return result;
+            return (MockResponse) super.clone();
         } catch (CloneNotSupportedException e) {
             throw new AssertionError();
         }
     }
 
-    /**
-     * Returns the HTTP response line, such as "HTTP/1.1 200 OK".
-     */
-    public String getStatus() {
-        return status;
-    }
-
-    public MockResponse setResponseCode(int code) {
-        this.status = "HTTP/1.1 " + code + " OK";
-        return this;
-    }
-
-    public MockResponse setStatus(String status) {
-        this.status = status;
-        return this;
-    }
-
-    /**
-     * Returns the HTTP headers, such as "Content-Length: 0".
-     */
-    public List<String> getHeaders() {
-        return headers;
-    }
-
-    public MockResponse clearHeaders() {
-        headers.clear();
-        return this;
-    }
-
-    public MockResponse addHeader(String header) {
-        headers.add(header);
-        return this;
-    }
-
-    public MockResponse addHeader(String name, Object value) {
-        return addHeader(name + ": " + String.valueOf(value));
-    }
-
-    public MockResponse setHeader(String name, Object value) {
-        removeHeader(name);
-        return addHeader(name, value);
-    }
-
-    public MockResponse removeHeader(String name) {
-        name += ": ";
-        for (Iterator<String> i = headers.iterator(); i.hasNext();) {
-            String header = i.next();
-            if (name.regionMatches(true, 0, header, 0, name.length())) {
-                i.remove();
-            }
-        }
-        return this;
-    }
-
-    /**
-     * Returns an input stream containing the raw HTTP payload.
-     */
-    public byte[] getBody() {
-        return body;
-    }
-
     public MockResponse setBody(byte[] body) {
-        if (this.body == EMPTY_BODY) {
-            headers.remove(EMPTY_BODY_HEADER);
-        }
-        this.headers.add("Content-Length: " + body.length);
         this.body = body;
+        setHeader(CONTENT_LENGTH, body.length);
         return this;
     }
 
@@ -130,9 +60,13 @@ public final class MockResponse implements Cloneable {
         }
     }
 
+    public byte[] getBody() {
+        return body;
+    }
+
     public MockResponse setChunkedBody(byte[] body, int maxChunkSize) throws IOException {
-        headers.remove(EMPTY_BODY_HEADER);
-        headers.add(CHUNKED_BODY_HEADER);
+        removeHeader(CONTENT_LENGTH);
+        addHeader(CHUNKED_BODY_HEADER);
 
         ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
         int pos = 0;
@@ -145,6 +79,7 @@ public final class MockResponse implements Cloneable {
             pos += chunkSize;
         }
         bytesOut.write("0\r\n\r\n".getBytes(ASCII)); // last chunk + empty trailer + crlf
+
         this.body = bytesOut.toByteArray();
         return this;
     }
@@ -153,28 +88,13 @@ public final class MockResponse implements Cloneable {
         return setChunkedBody(body.getBytes(ASCII), maxChunkSize);
     }
 
-    public SocketPolicy getSocketPolicy() {
-        return socketPolicy;
-    }
-
-    public MockResponse setSocketPolicy(SocketPolicy socketPolicy) {
-        this.socketPolicy = socketPolicy;
+    @Override
+    protected MockResponse self() {
         return this;
     }
 
-    public int getBytesPerSecond() {
-        return bytesPerSecond;
-    }
-
-    /**
-     * Set simulated network speed, in bytes per second.
-     */
-    public MockResponse setBytesPerSecond(int bytesPerSecond) {
-        this.bytesPerSecond = bytesPerSecond;
-        return this;
-    }
-
-    @Override public String toString() {
-        return status;
+    @Override
+    public void writeResponse(OutputStream out) throws IOException {
+        super.writeResponse(new ByteArrayInputStream(body), out);
     }
 }
